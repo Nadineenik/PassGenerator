@@ -1,9 +1,12 @@
 package nadinee.passgenerator.data
 
-import kotlinx.serialization.Serializable  // ← Добавь
+import kotlinx.datetime.LocalDateTime
+import kotlinx.serialization.Serializable
 
-@Serializable  // ← Добавь
+@Serializable
 data class Pass(
     val id: Long = 0,
-    val name: String
+    val password: String,
+    val isCurrent: Boolean = false,
+    val createdAt: LocalDateTime
 )
