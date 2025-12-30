@@ -160,7 +160,10 @@ fun PasswordGeneratorScreen() {
                 Text("Нет сохранённых паролей", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 LazyColumn(state = listState) {
-                    val sortedPasses = passes.sortedByDescending { it.createdAt } // 🔥 сортировка по дате
+                    val sortedPasses = passes.sortedWith(
+                        compareByDescending<Pass> { it.isCurrent }  // сначала текущий
+                            .thenByDescending { it.createdAt }     // потом по дате
+                    )
                     items(sortedPasses, key = { it.id }) { pass ->
                         ListItem(
                             headlineContent = {
