@@ -22,7 +22,10 @@ import kotlinx.datetime.toLocalDateTime
 import nadinee.passgenerator.data.Pass
 import nadinee.passgenerator.data.Repository
 import nadinee.passgenerator.ui.theme.PassGeneratorTheme // можешь переименовать в PassGeneratorTheme, если хочешь
-
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
+import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,11 +54,15 @@ fun PasswordGeneratorScreen() {
     var passwordLength by remember { mutableStateOf(12) }
     var showManualDialog by remember { mutableStateOf(false) }
 
-    // Тригагер для обновления списка
+    // Один общий SnackbarHostState для всего экрана
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // Триггер обновления списка
     var updateTrigger by remember { mutableStateOf(0) }
     val forceUpdate = { updateTrigger++ }
 
-    // Актуальный список паролей (всегда свежий при перерисовке)
+    // Актуальный список паролей
     val passes = Repository.passes
 
     Scaffold(
@@ -69,7 +76,8 @@ fun PasswordGeneratorScreen() {
                     )
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }  // Правильно здесь!
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -100,27 +108,42 @@ fun PasswordGeneratorScreen() {
 
                 // Галочка подтверждения
                 var confirmed by remember { mutableStateOf(false) }
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
                         checked = confirmed,
                         onCheckedChange = { checked ->
                             confirmed = checked
                             if (checked) {
-                                val now = Clock.System.now()
-                                    .toLocalDateTime(TimeZone.currentSystemDefault())
+                                val candidatePassword = generatedPassword
 
-                                val newPass = Pass(
-                                    password = generatedPassword,
-                                    isCurrent = true,
-                                    createdAt = now
-                                )
+                                if (passes.any { it.password == candidatePassword }) {
+                                    // Дубликат — показываем сообщение
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            "Этот пароль уже был сохранён ранее",
+                                            duration = SnackbarDuration.Short
+                                        )
+                                    }
+                                    confirmed = false
+                                } else {
+                                    // Уникальный — сохраняем
+                                    val now = Clock.System.now()
+                                        .toLocalDateTime(TimeZone.currentSystemDefault())
 
-                                val addedPass = Repository.addPassAndReturn(newPass, context)
-                                Repository.setAsCurrent(addedPass.id, context)
+                                    val newPass = Pass(
+                                        password = candidatePassword,
+                                        isCurrent = true,
+                                        createdAt = now
+                                    )
 
-                                generatedPassword = ""
-                                confirmed = false
-                                forceUpdate()  // Обновляем список
+                                    val addedPass = Repository.addPassAndReturn(newPass, context)
+                                    Repository.setAsCurrent(addedPass.id, context)
+
+                                    generatedPassword = ""
+                                    confirmed = false
+                                    forceUpdate()
+                                }
                             }
                         }
                     )
@@ -209,18 +232,28 @@ fun PasswordGeneratorScreen() {
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (manualPassword.isNotBlank()) {
-                            val now = Clock.System.now()
-                                .toLocalDateTime(TimeZone.currentSystemDefault())
+                        val candidatePassword = manualPassword.trim()
+                        if (candidatePassword.isNotBlank()) {
+                            if (passes.any { it.password == candidatePassword }) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        "Этот пароль уже был сохранён ранее",
+                                        duration = SnackbarDuration.Short
+                                    )
+                                }
+                            } else {
+                                val now = Clock.System.now()
+                                    .toLocalDateTime(TimeZone.currentSystemDefault())
 
-                            val newPass = Pass(
-                                password = manualPassword.trim(),
-                                isCurrent = true,
-                                createdAt = now
-                            )
-                            val added = Repository.addPassAndReturn(newPass, context)
-                            Repository.setAsCurrent(added.id, context)
-                            forceUpdate()  // Обновляем список!
+                                val newPass = Pass(
+                                    password = candidatePassword,
+                                    isCurrent = true,
+                                    createdAt = now
+                                )
+                                val added = Repository.addPassAndReturn(newPass, context)
+                                Repository.setAsCurrent(added.id, context)
+                                forceUpdate()
+                            }
                         }
                         showManualDialog = false
                         manualPassword = ""
