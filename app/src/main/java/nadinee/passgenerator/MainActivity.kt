@@ -43,7 +43,9 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordGeneratorScreen() {
+
     val context = LocalContext.current
+    val passes = Repository.passes   // 🔥 observable list
 
     var generatedPassword by remember { mutableStateOf("") }
     var passwordLength by remember { mutableStateOf(12) }
@@ -52,28 +54,21 @@ fun PasswordGeneratorScreen() {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Для гарантированного обновления — меняем версию состояния
-    var listVersion by remember { mutableStateOf(0) }
-    val forceListUpdate = { listVersion++ }
-
-    // Автоматическое обновление списка
-    val passes by snapshotFlow { Repository.passes }
-        .collectAsState(initial = Repository.passes)
-
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        "Генератор паролей",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 24.sp
+                        text = "Генератор паролей",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             )
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -82,7 +77,9 @@ fun PasswordGeneratorScreen() {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
+            // ===== СГЕНЕРИРОВАННЫЙ ПАРОЛЬ =====
             if (generatedPassword.isNotEmpty()) {
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -107,45 +104,44 @@ fun PasswordGeneratorScreen() {
                         checked = confirmed,
                         onCheckedChange = { checked ->
                             confirmed = checked
-                            if (checked) {
-                                val candidatePassword = generatedPassword
+                            if (!checked) return@Checkbox
 
-                                if (passes.any { it.password == candidatePassword }) {
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            "Этот пароль уже был сохранён ранее",
-                                            duration = SnackbarDuration.Short
-                                        )
-                                    }
-                                    confirmed = false
-                                } else {
-                                    val now = Clock.System.now()
-                                        .toLocalDateTime(TimeZone.currentSystemDefault())
-
-                                    val newPass = Pass(
-                                        password = candidatePassword,
-                                        isCurrent = true,
-                                        createdAt = now
+                            if (passes.any { it.password == generatedPassword }) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        "Этот пароль уже был сохранён ранее"
                                     )
-
-                                    val addedPass = Repository.addPassAndReturn(newPass, context)
-                                    Repository.setAsCurrent(addedPass.id, context)
-
-                                    generatedPassword = ""
-                                    confirmed = false
-                                    forceListUpdate()  // Гарантирует обновление
                                 }
+                                confirmed = false
+                                return@Checkbox
                             }
+
+                            val now = Clock.System.now()
+                                .toLocalDateTime(TimeZone.currentSystemDefault())
+
+                            val newPass = Pass(
+                                password = generatedPassword,
+                                isCurrent = true,
+                                createdAt = now
+                            )
+
+                            val added = Repository.addPassAndReturn(newPass, context)
+                            Repository.setAsCurrent(added.id, context)
+
+                            generatedPassword = ""
+                            confirmed = false
                         }
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Согласен — сохранить как текущий пароль")
+                    Text("Сохранить как текущий пароль")
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
+            // ===== ДЛИНА ПАРОЛЯ =====
             Text("Длина пароля: $passwordLength", fontSize = 18.sp)
+
             Slider(
                 value = passwordLength.toFloat(),
                 onValueChange = { passwordLength = it.toInt() },
@@ -157,7 +153,9 @@ fun PasswordGeneratorScreen() {
             Spacer(modifier = Modifier.height(24.dp))
 
             Button(
-                onClick = { generatedPassword = generateRandomPassword(passwordLength) },
+                onClick = {
+                    generatedPassword = generateRandomPassword(passwordLength)
+                },
                 modifier = Modifier.fillMaxWidth(0.7f)
             ) {
                 Text("Сгенерировать", fontSize = 18.sp)
@@ -174,20 +172,33 @@ fun PasswordGeneratorScreen() {
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            Text("История паролей", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            // ===== ИСТОРИЯ =====
+            Text(
+                text = "История паролей",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
             Spacer(modifier = Modifier.height(8.dp))
 
             if (passes.isEmpty()) {
-                Text("Нет сохранённых паролей", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = "Нет сохранённых паролей",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             } else {
                 LazyColumn {
-                    items(passes, key = { it.id }) { pass ->  // key здесь — правильно
+                    items(passes, key = { it.id }) { pass ->
                         ListItem(
                             headlineContent = {
                                 Text(
-                                    text = pass.password + if (pass.isCurrent) "  (текущий)" else "",
-                                    fontWeight = if (pass.isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (pass.isCurrent) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                                    text = pass.password +
+                                            if (pass.isCurrent) "  (текущий)" else "",
+                                    fontWeight = if (pass.isCurrent)
+                                        FontWeight.Bold else FontWeight.Normal,
+                                    color = if (pass.isCurrent)
+                                        MaterialTheme.colorScheme.primary
+                                    else LocalContentColor.current
                                 )
                             },
                             supportingContent = {
@@ -201,50 +212,23 @@ fun PasswordGeneratorScreen() {
         }
     }
 
-    // === Диалог ручного ввода ===
+    // ===== ДИАЛОГ РУЧНОГО ВВОДА =====
     if (showManualDialog) {
+
         var manualPassword by remember { mutableStateOf("") }
         var makeCurrent by remember { mutableStateOf(true) }
-        var useCurrentDate by remember { mutableStateOf(true) }
-        var manualDateTime by remember { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { showManualDialog = false },
-            title = { Text("Добавить свой пароль") },
+            title = { Text("Добавить пароль") },
             text = {
-                Column {
-                    OutlinedTextField(
-                        value = manualPassword,
-                        onValueChange = { manualPassword = it },
-                        label = { Text("Пароль") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = makeCurrent, onCheckedChange = { makeCurrent = it })
-                        Text("Сделать текущим паролем")
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = useCurrentDate, onCheckedChange = { useCurrentDate = it })
-                        Text("Использовать текущую дату и время")
-                    }
-
-                    if (!useCurrentDate) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = manualDateTime,
-                            onValueChange = { manualDateTime = it },
-                            label = { Text("Дата и время (гггг-мм-дд чч:мм)") },
-                            placeholder = { Text("2025-12-30 14:30") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
+                OutlinedTextField(
+                    value = manualPassword,
+                    onValueChange = { manualPassword = it },
+                    label = { Text("Пароль") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
             },
             confirmButton = {
                 TextButton(
@@ -259,42 +243,26 @@ fun PasswordGeneratorScreen() {
 
                         if (passes.any { it.password == password }) {
                             scope.launch {
-                                snackbarHostState.showSnackbar("Этот пароль уже был сохранён ранее")
+                                snackbarHostState.showSnackbar(
+                                    "Этот пароль уже был сохранён ранее"
+                                )
                             }
                             return@TextButton
                         }
 
-                        val createdAt = if (useCurrentDate) {
-                            Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
-                        } else {
-                            if (manualDateTime.isBlank()) {
-                                scope.launch {
-                                    snackbarHostState.showSnackbar("Введите дату и время")
-                                }
-                                return@TextButton
-                            }
-                            try {
-                                LocalDateTime.parse(manualDateTime.replace(" ", "T"))
-                            } catch (e: Exception) {
-                                scope.launch {
-                                    snackbarHostState.showSnackbar("Неверный формат даты. Используйте гггг-мм-дд чч:мм")
-                                }
-                                return@TextButton
-                            }
-                        }
+                        val now = Clock.System.now()
+                            .toLocalDateTime(TimeZone.currentSystemDefault())
 
                         val newPass = Pass(
                             password = password,
                             isCurrent = makeCurrent,
-                            createdAt = createdAt
+                            createdAt = now
                         )
 
                         val added = Repository.addPassAndReturn(newPass, context)
                         if (makeCurrent) {
                             Repository.setAsCurrent(added.id, context)
                         }
-
-                        forceListUpdate()  // Обновляем список мгновенно
 
                         showManualDialog = false
                     }
@@ -311,9 +279,10 @@ fun PasswordGeneratorScreen() {
     }
 }
 
-// === Генерация пароля ===
+// ===== ГЕНЕРАЦИЯ ПАРОЛЯ =====
 private fun generateRandomPassword(length: Int): String {
-    val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    val chars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
     return (1..length)
         .map { chars.random() }
         .joinToString("")
