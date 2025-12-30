@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,7 +46,9 @@ class MainActivity : ComponentActivity() {
 fun PasswordGeneratorScreen() {
 
     val context = LocalContext.current
-    val passes = Repository.passes   // 🔥 observable list
+    val passes = Repository.passes
+
+    val listState = rememberLazyListState() // 👈 состояние списка
 
     var generatedPassword by remember { mutableStateOf("") }
     var passwordLength by remember { mutableStateOf(12) }
@@ -130,6 +133,10 @@ fun PasswordGeneratorScreen() {
 
                             generatedPassword = ""
                             confirmed = false
+
+                            scope.launch {
+                                listState.animateScrollToItem(0) // 👈 автопрокрутка
+                            }
                         }
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -187,7 +194,9 @@ fun PasswordGeneratorScreen() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
-                LazyColumn {
+                LazyColumn(
+                    state = listState // 👈 подключили состояние
+                ) {
                     items(passes, key = { it.id }) { pass ->
                         ListItem(
                             headlineContent = {
@@ -262,6 +271,10 @@ fun PasswordGeneratorScreen() {
                         val added = Repository.addPassAndReturn(newPass, context)
                         if (makeCurrent) {
                             Repository.setAsCurrent(added.id, context)
+                        }
+
+                        scope.launch {
+                            listState.animateScrollToItem(0) // 👈 автопрокрутка
                         }
 
                         showManualDialog = false
