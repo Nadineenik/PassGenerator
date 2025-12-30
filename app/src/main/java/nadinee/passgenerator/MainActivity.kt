@@ -226,18 +226,53 @@ fun PasswordGeneratorScreen() {
 
         var manualPassword by remember { mutableStateOf("") }
         var makeCurrent by remember { mutableStateOf(true) }
+        var useCurrentDate by remember { mutableStateOf(true) }
+        var manualDateTime by remember { mutableStateOf("") }
 
         AlertDialog(
             onDismissRequest = { showManualDialog = false },
             title = { Text("Добавить пароль") },
             text = {
-                OutlinedTextField(
-                    value = manualPassword,
-                    onValueChange = { manualPassword = it },
-                    label = { Text("Пароль") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column {
+
+                    OutlinedTextField(
+                        value = manualPassword,
+                        onValueChange = { manualPassword = it },
+                        label = { Text("Пароль") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = makeCurrent,
+                            onCheckedChange = { makeCurrent = it }
+                        )
+                        Text("Сделать текущим паролем")
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = useCurrentDate,
+                            onCheckedChange = { useCurrentDate = it }
+                        )
+                        Text("Использовать текущую дату и время")
+                    }
+
+                    if (!useCurrentDate) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = manualDateTime,
+                            onValueChange = { manualDateTime = it },
+                            label = { Text("Дата и время (гггг-мм-дд чч:мм)") },
+                            placeholder = { Text("2025-12-30 14:30") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
@@ -259,13 +294,34 @@ fun PasswordGeneratorScreen() {
                             return@TextButton
                         }
 
-                        val now = Clock.System.now()
-                            .toLocalDateTime(TimeZone.currentSystemDefault())
+                        val createdAt = if (useCurrentDate) {
+                            Clock.System.now()
+                                .toLocalDateTime(TimeZone.currentSystemDefault())
+                        } else {
+                            if (manualDateTime.isBlank()) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("Введите дату и время")
+                                }
+                                return@TextButton
+                            }
+                            try {
+                                LocalDateTime.parse(
+                                    manualDateTime.replace(" ", "T")
+                                )
+                            } catch (e: Exception) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        "Неверный формат даты. Используйте гггг-мм-дд чч:мм"
+                                    )
+                                }
+                                return@TextButton
+                            }
+                        }
 
                         val newPass = Pass(
                             password = password,
                             isCurrent = makeCurrent,
-                            createdAt = now
+                            createdAt = createdAt
                         )
 
                         val added = Repository.addPassAndReturn(newPass, context)
@@ -274,7 +330,7 @@ fun PasswordGeneratorScreen() {
                         }
 
                         scope.launch {
-                            listState.animateScrollToItem(0) // 👈 автопрокрутка
+                            listState.animateScrollToItem(0)
                         }
 
                         showManualDialog = false
